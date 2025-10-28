@@ -316,18 +316,21 @@ class HuggingFaceClient(LLMClient):
         schema: Optional[Dict[str, Any]] = None
     ) -> str:
         """Send chat request to HuggingFace Inference API."""
-        # Combine system and user prompts
-        full_prompt = f"{system}\n\n{user}\n\nYou must respond with valid JSON only."
+        # Format as chat messages
+        messages = [
+            {"role": "system", "content": f"{system}\n\nYou must respond with valid JSON only."},
+            {"role": "user", "content": user}
+        ]
         
         try:
-            response = self.client.text_generation(
+            # Use chat completion API
+            response = self.client.chat_completion(
                 model=self.config.model_name,
-                prompt=full_prompt,
-                max_new_tokens=self.config.max_tokens,
+                messages=messages,
+                max_tokens=self.config.max_tokens,
                 temperature=self.config.temperature,
-                return_full_text=False,
             )
-            return response
+            return response.choices[0].message.content
         except Exception as e:
             print(f"HuggingFace API error: {e}")
             raise
