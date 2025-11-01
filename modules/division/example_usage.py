@@ -34,13 +34,11 @@ def test_dataset_loading():
             print(f"    - {cat}")
         if len(categories) > 5:
             print(f"    ... and {len(categories) - 5} more")
-        
-        # Load a few problems
+
         print("\nLoading 3 sample problems...")
         problems = loader.load(max_problems=3)
         print(f"✓ Loaded {len(problems)} problems\n")
-        
-        # Display samples
+
         for i, (problem, answer, metadata) in enumerate(problems, 1):
             print(f"Problem {i}:")
             print(f"  Type: {metadata.get('type', 'Unknown')}")

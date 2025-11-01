@@ -1,5 +1,3 @@
-# hcot_decomposer.py
-"""Hierarchical Chain-of-Thought decomposition system."""
 from __future__ import annotations
 import json
 from pathlib import Path
