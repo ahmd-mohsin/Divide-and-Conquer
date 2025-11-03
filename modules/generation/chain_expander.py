@@ -41,9 +41,9 @@ class HierarchicalChainExecutor:
     def __init__(
         self,
         model: str = "llama3.1:latest",
-        num_chains: int = 5,
+        num_chains: int = 10,
         temperature: float = 0.8,
-        max_tokens: int = 1024,
+        max_tokens: int = 4096,  # Increased from 1024 to 4096 for longer reasoning
         verbose: bool = False
     ):
         """
