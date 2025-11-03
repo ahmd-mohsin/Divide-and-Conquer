@@ -64,7 +64,7 @@ dependencies:
       - pandas==2.2.3
       - tqdm==4.66.5
       - matplotlib==3.9.0
-
+      - sentence-transformer
       # FastAPI stack
       - fastapi==0.111.0
       - uvicorn==0.30.1
