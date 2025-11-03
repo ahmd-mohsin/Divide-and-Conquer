@@ -42,10 +42,20 @@ def analyze_chains(output_dir: str = "data/chains", verbose: bool = True) -> Dic
         "models": metadata["models"]
     }
     
-    # Reward statistics
+    # Reward statistics with bins
     all_rewards = []
     all_success_rates = []
     by_dataset = {}
+    
+    # Reward distribution bins
+    reward_bins = {
+        "exact_match": 0,      # reward == 1.0
+        "very_high": 0,        # 0.9 <= reward < 1.0
+        "high": 0,             # 0.7 <= reward < 0.9
+        "medium": 0,           # 0.5 <= reward < 0.7
+        "low": 0,              # 0.3 <= reward < 0.5
+        "very_low": 0          # 0.0 <= reward < 0.3
+    }
     
     for entry in index:
         all_rewards.append(entry["avg_reward"])
@@ -63,10 +73,26 @@ def analyze_chains(output_dir: str = "data/chains", verbose: bool = True) -> Dic
         by_dataset[dataset]["rewards"].append(entry["avg_reward"])
         by_dataset[dataset]["success_rates"].append(entry["success_rate"])
     
+    # Categorize rewards
+    for reward in all_rewards:
+        if reward >= 1.0:
+            reward_bins["exact_match"] += 1
+        elif reward >= 0.9:
+            reward_bins["very_high"] += 1
+        elif reward >= 0.7:
+            reward_bins["high"] += 1
+        elif reward >= 0.5:
+            reward_bins["medium"] += 1
+        elif reward >= 0.3:
+            reward_bins["low"] += 1
+        else:
+            reward_bins["very_low"] += 1
+    
     stats["avg_reward"] = sum(all_rewards) / len(all_rewards)
     stats["avg_success_rate"] = sum(all_success_rates) / len(all_success_rates)
     stats["min_reward"] = min(all_rewards)
     stats["max_reward"] = max(all_rewards)
+    stats["reward_distribution"] = reward_bins
     
     # By dataset
     stats["by_dataset"] = {}
@@ -87,7 +113,7 @@ def print_statistics(stats: Dict[str, Any]):
     """Print formatted statistics."""
     
     print("\n" + "="*70)
-    print("CHAIN GENERATION STATISTICS")
+    print("CHAIN GENERATION STATISTICS (WITH SEMANTIC SIMILARITY)")
     print("="*70)
     
     print(f"\nOverall:")
@@ -101,14 +127,24 @@ def print_statistics(stats: Dict[str, Any]):
     print(f"  Average reward: {stats['avg_reward']:.3f}")
     print(f"  Min reward: {stats['min_reward']:.3f}")
     print(f"  Max reward: {stats['max_reward']:.3f}")
-    print(f"  Success rate: {stats['avg_success_rate']:.1%}")
+    print(f"  Success rate (reward=1.0): {stats['avg_success_rate']:.1%}")
+    
+    print(f"\nReward Distribution:")
+    dist = stats['reward_distribution']
+    total = sum(dist.values())
+    print(f"  Exact Match (1.0):      {dist['exact_match']:4d} ({dist['exact_match']/total*100:.1f}%)")
+    print(f"  Very High (0.9-0.99):   {dist['very_high']:4d} ({dist['very_high']/total*100:.1f}%)")
+    print(f"  High (0.7-0.89):        {dist['high']:4d} ({dist['high']/total*100:.1f}%)")
+    print(f"  Medium (0.5-0.69):      {dist['medium']:4d} ({dist['medium']/total*100:.1f}%)")
+    print(f"  Low (0.3-0.49):         {dist['low']:4d} ({dist['low']/total*100:.1f}%)")
+    print(f"  Very Low (0.0-0.29):    {dist['very_low']:4d} ({dist['very_low']/total*100:.1f}%)")
     
     print(f"\nBy Dataset:")
     for dataset, data in stats["by_dataset"].items():
         print(f"  {dataset}:")
         print(f"    Problems: {data['count']}")
         print(f"    Avg reward: {data['avg_reward']:.3f}")
-        print(f"    Success rate: {data['avg_success_rate']:.1%}")
+        print(f"    Exact match rate: {data['avg_success_rate']:.1%}")
     
     print(f"\nDatasets used: {', '.join(stats['datasets'])}")
     print(f"Models used: {', '.join(stats['models'])}")
