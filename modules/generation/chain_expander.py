@@ -485,7 +485,7 @@ FINAL ANSWER:"""
                 
                 # Convert similarity (-1 to 1) to reward (0 to 0.95)
                 # Cap at 0.95 so exact matches are still clearly better
-                semantic_reward = max(0.0, min(0.95, (similarity + 1) / 2 * 0.95))
+                semantic_reward = max(0.0, min(1, (similarity + 1) / 2 * 1))
                 
                 return semantic_reward
                 

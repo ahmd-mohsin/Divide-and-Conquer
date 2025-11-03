@@ -166,6 +166,7 @@ def batch_generate_chains(
     generation_model: str = "llama3.1:latest",
     num_chains: int = 5,
     temperature: float = 0.8,
+    max_tokens: int = 4096,
     output_dir: str = "data/chains",
     depth: int = 3,
     branching: int = 3,
@@ -183,6 +184,7 @@ def batch_generate_chains(
         generation_model: Model for chain generation
         num_chains: Number of chains per subproblem
         temperature: Sampling temperature
+        max_tokens: Maximum tokens per generation step
         output_dir: Output directory
         depth: Decomposition depth
         branching: Decomposition branching factor
@@ -225,6 +227,7 @@ def batch_generate_chains(
         model=generation_model,
         num_chains=num_chains,
         temperature=temperature,
+        max_tokens=max_tokens,
         verbose=verbose
     )
     
@@ -369,6 +372,8 @@ Examples:
                        help="Number of execution chains per problem")
     parser.add_argument("--temperature", type=float, default=0.8,
                        help="Sampling temperature")
+    parser.add_argument("--max-tokens", type=int, default=4096,
+                       help="Maximum tokens per generation step")
     parser.add_argument("--output-dir", default="data/chains",
                        help="Output directory")
     parser.add_argument("--depth", type=int, default=3,
@@ -406,6 +411,7 @@ Examples:
         generation_model=args.generation_model,
         num_chains=args.num_chains,
         temperature=args.temperature,
+        max_tokens=args.max_tokens,
         output_dir=args.output_dir,
         depth=args.depth,
         branching=args.branching,
