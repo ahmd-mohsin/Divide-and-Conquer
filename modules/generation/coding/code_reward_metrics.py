@@ -23,7 +23,6 @@ import ast
 import math
 import re
 
-# ------------------------------- Utilities ----------------------------------
 
 
 def _normalize_ws(text: str) -> str:
