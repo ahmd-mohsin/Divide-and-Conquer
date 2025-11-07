@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Analyze Chain Generation Results
-Provides statistics and insights about generated chains.
+Provides statistics and insights about generated chains with proper ground truth handling.
 """
 import json
 from pathlib import Path
@@ -31,9 +31,15 @@ def analyze_chains(output_dir: str = "data/chains", verbose: bool = True) -> Dic
         print("No problems found in dataset")
         return {}
     
+    # Check for ground truth issues
+    problems_with_gt = sum(1 for e in index if e.get("ground_truth") and e["ground_truth"] != "")
+    problems_without_gt = len(index) - problems_with_gt
+    
     # Overall statistics
     stats = {
         "total_problems": len(index),
+        "problems_with_ground_truth": problems_with_gt,
+        "problems_without_ground_truth": problems_without_gt,
         "total_subproblems": metadata["total_subproblems"],
         "total_chains": metadata["total_chains"],
         "avg_chains_per_problem": metadata["total_chains"] / len(index),
@@ -66,12 +72,20 @@ def analyze_chains(output_dir: str = "data/chains", verbose: bool = True) -> Dic
             by_dataset[dataset] = {
                 "count": 0,
                 "rewards": [],
-                "success_rates": []
+                "success_rates": [],
+                "with_ground_truth": 0,
+                "without_ground_truth": 0
             }
         
         by_dataset[dataset]["count"] += 1
         by_dataset[dataset]["rewards"].append(entry["avg_reward"])
         by_dataset[dataset]["success_rates"].append(entry["success_rate"])
+        
+        # Track ground truth presence
+        if entry.get("ground_truth") and entry["ground_truth"] != "":
+            by_dataset[dataset]["with_ground_truth"] += 1
+        else:
+            by_dataset[dataset]["without_ground_truth"] += 1
     
     # Categorize rewards
     for reward in all_rewards:
@@ -100,7 +114,9 @@ def analyze_chains(output_dir: str = "data/chains", verbose: bool = True) -> Dic
         stats["by_dataset"][dataset] = {
             "count": data["count"],
             "avg_reward": sum(data["rewards"]) / len(data["rewards"]),
-            "avg_success_rate": sum(data["success_rates"]) / len(data["success_rates"])
+            "avg_success_rate": sum(data["success_rates"]) / len(data["success_rates"]),
+            "with_ground_truth": data["with_ground_truth"],
+            "without_ground_truth": data["without_ground_truth"]
         }
     
     if verbose:
@@ -113,11 +129,18 @@ def print_statistics(stats: Dict[str, Any]):
     """Print formatted statistics."""
     
     print("\n" + "="*70)
-    print("CHAIN GENERATION STATISTICS (WITH SEMANTIC SIMILARITY)")
+    print("CHAIN GENERATION STATISTICS")
     print("="*70)
     
     print(f"\nOverall:")
     print(f"  Total problems: {stats['total_problems']}")
+    print(f"  Problems with ground truth: {stats['problems_with_ground_truth']}")
+    print(f"  Problems WITHOUT ground truth: {stats['problems_without_ground_truth']}")
+    
+    if stats['problems_without_ground_truth'] > 0:
+        print(f"  ⚠ WARNING: {stats['problems_without_ground_truth']} problems missing ground truth!")
+        print(f"            This will cause 0% success rates and low rewards")
+    
     print(f"  Total subproblems: {stats['total_subproblems']}")
     print(f"  Total chains: {stats['total_chains']}")
     print(f"  Avg subproblems per problem: {stats['avg_subproblems_per_problem']:.1f}")
@@ -143,8 +166,13 @@ def print_statistics(stats: Dict[str, Any]):
     for dataset, data in stats["by_dataset"].items():
         print(f"  {dataset}:")
         print(f"    Problems: {data['count']}")
+        print(f"    With ground truth: {data['with_ground_truth']}")
+        print(f"    Without ground truth: {data['without_ground_truth']}")
         print(f"    Avg reward: {data['avg_reward']:.3f}")
         print(f"    Exact match rate: {data['avg_success_rate']:.1%}")
+        
+        if data['without_ground_truth'] > 0:
+            print(f"    ⚠ {data['without_ground_truth']} problems missing ground truth")
     
     print(f"\nDatasets used: {', '.join(stats['datasets'])}")
     print(f"Models used: {', '.join(stats['models'])}")
@@ -174,36 +202,48 @@ def find_challenging_problems(output_dir: str = "data/chains", top_n: int = 5) -
     return sorted_problems[:top_n]
 
 
+def find_missing_ground_truth(output_dir: str = "data/chains") -> List[Dict[str, Any]]:
+    """Find problems without ground truth."""
+    
+    _, index = load_chain_dataset(output_dir)
+    
+    missing = [e for e in index if not e.get("ground_truth") or e["ground_truth"] == ""]
+    
+    return missing
+
+
 def export_for_grpo(
     output_dir: str = "data/chains",
     export_file: str = "data/grpo_dataset.jsonl",
-    min_reward: float = 0.0
+    min_reward: float = 0.0,
+    require_ground_truth: bool = True
 ) -> int:
     """
     Export hierarchical chains in format suitable for GRPO training.
     
-    Format per line:
-    {
-        "prompt": "problem context",
-        "completions": [
-            {"text": "full execution chain 1", "reward": 0.8},
-            {"text": "full execution chain 2", "reward": 1.0},
-            ...
-        ]
-    }
+    Args:
+        output_dir: Directory with chain dataset
+        export_file: Output JSONL file
+        min_reward: Minimum reward threshold
+        require_ground_truth: Only export problems with ground truth
     
     Returns:
         Number of problems exported
     """
     
     output_path = Path(output_dir)
-    chains_dir = output_path / "chains"
-    
     _, index = load_chain_dataset(output_dir)
     
     export_data = []
+    skipped_no_gt = 0
     
     for entry in index:
+        # Skip if no ground truth and required
+        if require_ground_truth:
+            if not entry.get("ground_truth") or entry["ground_truth"] == "":
+                skipped_no_gt += 1
+                continue
+        
         # Load full chain data
         chain_file = output_path / entry["file"]
         with open(chain_file, 'r') as f:
@@ -218,10 +258,9 @@ def export_for_grpo(
         if not chains:
             continue
         
-        # Format each chain as a single text (all steps concatenated)
+        # Format each chain as a single text
         completions = []
         for chain in chains:
-            # Build full execution trace
             steps_text = []
             for step in chain.get('steps', []):
                 step_text = f"Step: {step['goal']}\nReasoning: {step['reasoning']}\nAnswer: {step['answer']}\n"
@@ -238,9 +277,9 @@ def export_for_grpo(
         
         # Create GRPO format entry
         grpo_entry = {
-            "prompt": f"Problem: {chain_data['problem']}\n\nSolve this problem step by step through the following subproblems:",
+            "prompt": f"Problem: {chain_data['problem']}\n\nSolve this problem step by step:",
             "completions": completions,
-            "ground_truth": chain_data["ground_truth"],
+            "ground_truth": chain_data.get("ground_truth", ""),
             "problem_id": entry["id"],
             "num_subproblems": chain_data.get("num_subproblems", 0)
         }
@@ -256,6 +295,8 @@ def export_for_grpo(
             f.write(json.dumps(entry) + '\n')
     
     print(f"\n✓ Exported {len(export_data)} problems to {export_file}")
+    if skipped_no_gt > 0:
+        print(f"  ⚠ Skipped {skipped_no_gt} problems without ground truth")
     print(f"  Format: JSONL with hierarchical execution chains")
     print(f"  Ready for GRPO training\n")
     
@@ -278,6 +319,8 @@ def main():
                        help="Show N best problems")
     parser.add_argument("--show-challenging", type=int, default=0,
                        help="Show N most challenging problems")
+    parser.add_argument("--show-missing-gt", action="store_true",
+                       help="Show problems missing ground truth")
     
     args = parser.parse_args()
     
@@ -291,6 +334,7 @@ def main():
         best = find_best_chains(args.input_dir, args.show_best)
         for i, p in enumerate(best, 1):
             print(f"{i}. {p['id']}: reward={p['avg_reward']:.3f}, success={p['success_rate']:.1%}")
+            print(f"   GT: {p.get('ground_truth', 'MISSING')}")
             print(f"   {p['problem'][:80]}...")
             print()
     
@@ -301,15 +345,28 @@ def main():
         challenging = find_challenging_problems(args.input_dir, args.show_challenging)
         for i, p in enumerate(challenging, 1):
             print(f"{i}. {p['id']}: success={p['success_rate']:.1%}, reward={p['avg_reward']:.3f}")
+            print(f"   GT: {p.get('ground_truth', 'MISSING')}")
             print(f"   {p['problem'][:80]}...")
             print()
+    
+    # Show missing ground truth
+    if args.show_missing_gt:
+        missing = find_missing_ground_truth(args.input_dir)
+        print(f"\nProblems missing ground truth: {len(missing)}")
+        print("-" * 70)
+        for p in missing[:10]:  # Show first 10
+            print(f"  {p['id']}: {p['problem'][:60]}...")
+        if len(missing) > 10:
+            print(f"  ... and {len(missing) - 10} more")
+        print()
     
     # Export for GRPO
     if args.export_grpo:
         num_exported = export_for_grpo(
             args.input_dir,
             args.export_file,
-            args.min_reward
+            args.min_reward,
+            require_ground_truth=True
         )
 
 
